@@ -1,0 +1,2540 @@
+-- [ VortexHub - Forsaken Edition ] (Unlimited Stamina fixed)
+local ok, Rayfield = pcall(function() 
+    return loadstring(game:HttpGet('https://sirius.menu/rayfield'))() 
+end)
+if not ok or not Rayfield then
+    warn("Rayfield failed to load.")
+    return
+end
+
+-- ✅ Replaced Window setup
+local Window = Rayfield:CreateWindow({
+   Name = "VortexHub.GG Guest 1337 Features!",
+   Icon = 83537470545471, -- Icon in Topbar. Can use Lucide Icons (string) or Roblox Image (number). 0 to use no icon (default).
+   LoadingTitle = "VortexHub.GG",
+   LoadingSubtitle = "Loading UI...",
+   ShowText = "VortexHub", -- for mobile users to unhide rayfield, change if you'd like
+   Theme = "Amethyst", -- Check https://docs.sirius.menu/rayfield/configuration/themes
+
+   ToggleUIKeybind = "K", -- The keybind to toggle the UI visibility (string like "K" or Enum.KeyCode)
+
+   DisableRayfieldPrompts = false,
+   DisableBuildWarnings = false, -- Prevents Rayfield from warning when the script has a version mismatch with the interface
+
+   ConfigurationSaving = {
+      Enabled = true,
+      FolderName = nil, -- Create a custom folder for your hub/game
+      FileName = "Big Hub"
+   },
+
+   Discord = {
+      Enabled = true, -- Prompt the user to join your Discord server if their executor supports it
+      Invite = "7fXDf2h3cE", -- The Discord invite code, do not include discord.gg/. E.g. discord.gg/ABCD would be ABCD
+      RememberJoins = false -- Set this to false to make them join the discord every time they load it up
+   },
+
+   KeySystem = false, -- Set this to true to use our key system
+   KeySettings = {
+      Title = "VortexHub",
+      Subtitle = "Key-System",
+      Note = "Tip: Join our Discord Server to get the Key!", -- Use this to tell the user how to get a key
+      FileName = "Key", -- It is recommended to use something unique as other scripts using Rayfield may overwrite your key file
+      SaveKey = true, -- The user's key will be saved, but if you change the key, they will be unable to use your script
+      GrabKeyFromSite = false, -- If this is true, set Key below to the RAW site you would like Rayfield to get the key from
+      Key = {"V2part1"} -- List of keys that will be accepted by the system, can be RAW file links (pastebin, github etc) or simple strings ("hello","key22")
+   }
+})
+
+-- ================= HOME TAB (ROLE-SAFE, FIXED) =================
+local HomeTab = Window:CreateTab("Home", "cloudy")
+HomeTab:CreateSection("POV")
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+-- ===== CAMERA ZOOM & NOCLIP =====
+local function applyCameraZoom(val)
+    if not LocalPlayer then return end
+    pcall(function()
+        LocalPlayer.CameraMaxZoomDistance = val
+    end)
+
+    local Camera = workspace.CurrentCamera
+    if Camera then
+        pcall(function()
+            Camera.CameraType = Enum.CameraType.Custom
+            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
+                Camera.CameraSubject = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+            end
+            Camera.FieldOfView = math.clamp(70 + (val / 50), 70, 120)
+        end)
+    end
+end
+
+-- initialize camera zoom
+local initZoom = (LocalPlayer and LocalPlayer.CameraMaxZoomDistance) or 20
+applyCameraZoom(initZoom)
+
+-- === Camera Zoom Distance Slider ===
+HomeTab:CreateSlider({
+    Name = "Camera Zoom Distance",
+    Range = {10, 500},
+    Increment = 5,
+    Suffix = " studs",
+    CurrentValue = initZoom,
+    Flag = "CameraZoomSlider",
+    Callback = function(value)
+        initZoom = value
+        applyCameraZoom(value)
+    end,
+})
+
+-- === Camera Noclip Toggle ===
+HomeTab:CreateToggle({
+    Name = "Camera Noclip",
+    CurrentValue = false,
+    Flag = "CameraNoclipToggle",
+    Callback = function(state)
+        if not LocalPlayer then return end
+        if state then
+            LocalPlayer.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Invisicam
+        else
+            LocalPlayer.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Zoom
+        end
+    end,
+})
+
+-- ================= KILLER PROXIMITY ALERT =================
+HomeTab:CreateSection("Alert & Lock on")
+
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local LocalPlayer = Players.LocalPlayer
+
+local killersFolder = Workspace:FindFirstChild("Players") and Workspace.Players:FindFirstChild("Killers")
+local killerNames = { "Slasher", "c00lkidd", "JohnDoe", "1x1x1x1", "Noli" }
+
+local alertGui
+local alertLabel
+local alertLoop
+local alertEnabled = false
+
+-- ⚠️ Proximity Alert Toggle
+HomeTab:CreateToggle({
+	Name = "Killer Proximity Alert",
+	CurrentValue = false,
+	Flag = "KillerProxAlert",
+	Callback = function(state)
+		alertEnabled = state
+		if state then
+			local screenGui = Instance.new("ScreenGui")
+			screenGui.Name = "KillerAlert"
+			screenGui.ResetOnSpawn = false
+			screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+			alertGui = screenGui
+			alertLabel = Instance.new("TextLabel")
+			alertLabel.Size = UDim2.new(1, 0, 0, 60)
+			alertLabel.Position = UDim2.new(0, 0, 0, 0)
+			alertLabel.BackgroundTransparency = 1
+			alertLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
+			alertLabel.TextStrokeTransparency = 0.3
+			alertLabel.Font = Enum.Font.GothamBlack
+			alertLabel.TextSize = 38
+			alertLabel.Text = ""
+			alertLabel.Parent = screenGui
+
+			local ALERT_DISTANCE = 60
+			local flashOn = false
+
+			alertLoop = task.spawn(function()
+				while alertEnabled do
+					local playerChar = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+					local playerRoot = playerChar:FindFirstChild("HumanoidRootPart")
+					if not playerRoot or not killersFolder then task.wait(0.5) continue end
+
+					local nearestDistance = math.huge
+					for _, killerName in ipairs(killerNames) do
+						local killerModel = killersFolder:FindFirstChild(killerName)
+						if killerModel and killerModel:FindFirstChild("HumanoidRootPart") then
+							local dist = (playerRoot.Position - killerModel.HumanoidRootPart.Position).Magnitude
+							if dist < nearestDistance then
+								nearestDistance = dist
+							end
+						end
+					end
+
+					if nearestDistance <= ALERT_DISTANCE then
+						flashOn = not flashOn
+						alertLabel.Text = flashOn and ("⚠️ Killer is near! (" .. math.floor(nearestDistance) .. " studs)") or ""
+					else
+						alertLabel.Text = ""
+					end
+					task.wait(0.5)
+				end
+			end)
+		else
+			if alertLoop then
+				task.cancel(alertLoop)
+				alertLoop = nil
+			end
+			if alertGui then
+				alertGui:Destroy()
+				alertGui = nil
+			end
+		end
+	end
+})
+
+
+-- 💨 AUTO TELEPORT FROM KILLER TOGGLE
+local autoTeleportEnabled = false
+local teleportLoop
+
+HomeTab:CreateToggle({
+	Name = "Auto Teleport from Killer",
+	CurrentValue = false,
+	Flag = "AutoTeleportFromKiller",
+	Callback = function(state)
+		autoTeleportEnabled = state
+		if state then
+			teleportLoop = task.spawn(function()
+				local TELEPORT_DISTANCE = 50 -- how far to teleport away
+				local TRIGGER_DISTANCE = 55 -- when killer gets this close
+
+				while autoTeleportEnabled do
+					local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+					local hrp = char:FindFirstChild("HumanoidRootPart")
+					if not hrp or not killersFolder then task.wait(0.5) continue end
+
+					local nearestDistance = math.huge
+					local nearestKillerPos = nil
+
+					for _, killerName in ipairs(killerNames) do
+						local killerModel = killersFolder:FindFirstChild(killerName)
+						if killerModel and killerModel:FindFirstChild("HumanoidRootPart") then
+							local dist = (hrp.Position - killerModel.HumanoidRootPart.Position).Magnitude
+							if dist < nearestDistance then
+								nearestDistance = dist
+								nearestKillerPos = killerModel.HumanoidRootPart.Position
+							end
+						end
+					end
+
+					if nearestDistance <= TRIGGER_DISTANCE and nearestKillerPos then
+						-- Pick a random offset near your position, not too far
+						local randomOffset = Vector3.new(
+							math.random(-TELEPORT_DISTANCE, TELEPORT_DISTANCE),
+							0,
+							math.random(-TELEPORT_DISTANCE, TELEPORT_DISTANCE)
+						)
+
+						local newPos = hrp.Position + randomOffset
+						hrp.CFrame = CFrame.new(newPos)
+					end
+
+					task.wait(1)
+				end
+			end)
+		else
+			if teleportLoop then
+				task.cancel(teleportLoop)
+				teleportLoop = nil
+			end
+		end
+	end
+})
+
+-- ================= LOCK ON SYSTEM =================
+
+local RunService = game:GetService("RunService")
+local playersFolder = workspace:WaitForChild("Players")
+
+local lockEnabled = false
+local targetEnemy
+local highlight
+
+local function getPlayerFolder()
+    local character = LocalPlayer.Character
+    if not character then return nil end
+    local parent = character.Parent
+    if parent and (parent.Name == "Killers" or parent.Name == "Survivors") then
+        return parent.Name
+    end
+    return nil
+end
+
+local function getClosestEnemy(maxDistance)
+    local myCharacter = LocalPlayer.Character
+    if not myCharacter then return nil end
+    local myHRP = myCharacter:FindFirstChild("HumanoidRootPart")
+    if not myHRP then return nil end
+    local myFolder = getPlayerFolder()
+    if not myFolder then return nil end
+
+    local enemyFolderName = myFolder == "Killers" and "Survivors" or "Killers"
+    local enemyFolder = playersFolder:FindFirstChild(enemyFolderName)
+    if not enemyFolder then return nil end
+
+    local closest
+    local shortestDistance = math.huge
+
+    for _, enemyModel in pairs(enemyFolder:GetChildren()) do
+        local hrp = enemyModel:FindFirstChild("HumanoidRootPart")
+        local hum = enemyModel:FindFirstChild("Humanoid")
+        if hrp and hum and hum.Health > 0 then
+            local distance = (myHRP.Position - hrp.Position).Magnitude
+            if distance < shortestDistance and distance <= maxDistance then
+                shortestDistance = distance
+                closest = enemyModel
+            end
+        end
+    end
+    return closest
+end
+
+RunService.RenderStepped:Connect(function()
+    if not lockEnabled then return end
+
+    local myCharacter = LocalPlayer.Character
+    if not myCharacter then return end
+    local myHum = myCharacter:FindFirstChild("Humanoid")
+    local myHRP = myCharacter:FindFirstChild("HumanoidRootPart")
+    if not myHRP or not myHum then return end
+
+    if myHum.Health <= 0 then
+        lockEnabled = false
+        targetEnemy = nil
+        if highlight then highlight:Destroy() highlight = nil end
+        return
+    end
+
+    targetEnemy = getClosestEnemy(100)
+    if targetEnemy then
+        local hrp = targetEnemy:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            myHRP.CFrame = CFrame.new(myHRP.Position, hrp.Position)
+            if not highlight or highlight.Adornee ~= targetEnemy then
+                if highlight then highlight:Destroy() end
+                highlight = Instance.new("Highlight")
+                highlight.Adornee = targetEnemy
+                highlight.FillColor = Color3.fromRGB(255, 0, 0)
+                highlight.FillTransparency = 0.5
+                highlight.OutlineColor = Color3.fromRGB(255, 0, 0)
+                highlight.Parent = targetEnemy
+            end
+        end
+    else
+        if highlight then
+            highlight:Destroy()
+            highlight = nil
+        end
+    end
+end)
+
+HomeTab:CreateToggle({
+    Name = "Lock On",
+    CurrentValue = false,
+    Flag = "LockOn",
+    Callback = function(state)
+        lockEnabled = state
+        if not state then
+            if highlight then highlight:Destroy() highlight = nil end
+            targetEnemy = nil
+        end
+    end
+})
+
+-- ================= STATUS EFFECTS REMOVER =================
+
+local disableEffects = false
+local effectModules = {
+	"Modules.StatusEffects.SurvivorExclusive.Subspaced",
+	"Modules.StatusEffects.KillerExclusive.Glitched",
+	"Modules.StatusEffects.Blindness",
+	"Modules.StatusEffects.Stunned",
+	"Modules.StatusEffects.Helpless",
+	"Modules.StatusEffects.Slowness"
+}
+
+local function getDescendantFromPath(parent, path)
+	local current = parent
+	for segment in string.gmatch(path, "[^%.]+") do
+		current = current:FindFirstChild(segment)
+		if not current then
+			return nil
+		end
+	end
+	return current
+end
+
+local effectLoop
+HomeTab:CreateToggle({
+	Name = "Disable Status Effects",
+	CurrentValue = false,
+	Flag = "DisableStatusEffects",
+	Callback = function(state)
+		disableEffects = state
+		if disableEffects then
+			effectLoop = task.spawn(function()
+				while disableEffects do
+					for _, path in ipairs(effectModules) do
+						local module = getDescendantFromPath(game:GetService("ReplicatedStorage"), path)
+						if module then
+							pcall(function()
+								module:Destroy()
+							end)
+						end
+					end
+					task.wait(0.5)
+				end
+			end)
+		else
+			if effectLoop then
+				task.cancel(effectLoop)
+				effectLoop = nil
+			end
+		end
+	end
+})
+
+HomeTab:CreateSection("Anti")
+
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+
+-- Paths
+local HallucinationPath = ReplicatedStorage:WaitForChild("Modules")
+    :WaitForChild("StatusEffects")
+    :WaitForChild("KillerExclusive")
+    :WaitForChild("Hallucination")
+    :WaitForChild("HallucinationClass")
+
+local MapPath = Workspace:WaitForChild("Map")
+    :WaitForChild("Ingame")
+    :WaitForChild("Map")
+
+-- Targets
+local FakeNoliName = "FakeNoli"
+local FakeGeneratorName = "FakeGenerator"
+
+-- State
+local NoliDeleting = false
+local GeneratorDeleting = false
+local NoliConnection
+local GeneratorConnection
+
+-- // Toggle for Auto Delete (add this inside your CombatTab)
+HomeTab:CreateToggle({
+    Name = "Anti-FakeNoli",
+    CurrentValue = false,
+    Flag = "AutoDeleteFakeNoli",
+    Callback = function(Value)
+        NoliDeleting = Value
+
+        if NoliConnection then
+            NoliConnection:Disconnect()
+            NoliConnection = nil
+        end
+
+        if NoliDeleting then
+            NoliConnection = RunService.Heartbeat:Connect(function()
+                local fake = HallucinationPath:FindFirstChild(FakeNoliName)
+                if fake then
+                    fake:Destroy()
+                end
+            end)
+        end
+    end,
+})
+
+HomeTab:CreateToggle({
+    Name = "Anti-FakeGenerator",
+    CurrentValue = false,
+    Flag = "AutoDeleteFakeGenerators",
+    Callback = function(Value)
+        GeneratorDeleting = Value
+
+        if GeneratorConnection then
+            GeneratorConnection:Disconnect()
+            GeneratorConnection = nil
+        end
+
+        if GeneratorDeleting then
+            GeneratorConnection = RunService.Heartbeat:Connect(function()
+                for _, obj in ipairs(MapPath:GetChildren()) do
+                    if obj.Name == FakeGeneratorName then
+                        obj:Destroy()
+                    end
+                end
+            end)
+        end
+    end,
+})
+
+-- ================= STAMINA SECTION =================
+HomeTab:CreateSection("Stamina System")
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Sprinting = ReplicatedStorage:WaitForChild("Systems")
+    :WaitForChild("Character")
+    :WaitForChild("Game")
+    :WaitForChild("Sprinting")
+
+local stamina = require(Sprinting)
+local defaultStamina = {
+    SprintSpeed = stamina.SprintSpeed or 24,
+    MaxStamina = stamina.MaxStamina or 100,
+    MinStamina = stamina.MinStamina or 0,
+    StaminaGain = stamina.StaminaGain or 20,
+    StaminaLoss = stamina.StaminaLoss or 10
+}
+
+local staminaVals = table.clone(defaultStamina)
+local customEnabled = false
+local unlimitedEnabled = false
+
+local function apply(tbl)
+    for k, v in pairs(tbl) do
+        if stamina[k] ~= nil then
+            stamina[k] = v
+        end
+    end
+end
+
+local function restoreDefaults()
+    apply(defaultStamina)
+end
+
+-- ✅ Custom stamina toggle
+HomeTab:CreateToggle({
+    Name = "Enable Custom Stamina",
+    CurrentValue = false,
+    Callback = function(state)
+        customEnabled = state
+        if state then
+            if not unlimitedEnabled then
+                apply(staminaVals)
+            end
+        else
+            if not unlimitedEnabled then
+                restoreDefaults()
+            end
+        end
+    end
+})
+
+-- ✅ Unlimited stamina toggle
+HomeTab:CreateToggle({
+    Name = "Unlimited Stamina",
+    CurrentValue = false,
+    Callback = function(state)
+        unlimitedEnabled = state
+        if state then
+            stamina.StaminaLoss = 0
+            stamina.StaminaGain = 9999
+            stamina.MaxStamina = 9999
+        else
+            if customEnabled then
+                apply(staminaVals)
+            else
+                restoreDefaults()
+            end
+        end
+    end
+})
+
+-- ✅ Sliders
+local function makeSlider(name, field, range, increment)
+    HomeTab:CreateSlider({
+        Name = name,
+        Range = range,
+        Increment = increment,
+        CurrentValue = staminaVals[field],
+        Callback = function(v)
+            staminaVals[field] = v
+            if customEnabled and not unlimitedEnabled then
+                stamina[field] = v
+            end
+        end
+    })
+end
+
+makeSlider("Sprint Speed", "SprintSpeed", {16, 40}, 1)
+makeSlider("Max Stamina", "MaxStamina", {50, 500}, 5)
+makeSlider("Min Stamina", "MinStamina", {-100, 0}, 1)
+makeSlider("Stamina Gain", "StaminaGain", {1, 100}, 1)
+makeSlider("Stamina Loss", "StaminaLoss", {1, 50}, 1)
+
+-- ================= ESP TAB =================
+local EspTab = Window:CreateTab("ESP", "eye")
+EspTab:CreateSection("ESP Settings")
+
+local ESPHighlights = {} -- map highlight -> meta
+local espRunning = false
+local survivorColor = Color3.fromRGB(0,255,0)
+local killerColor = Color3.fromRGB(255,0,0)
+local generatorColor = Color3.fromRGB(255,255,0)
+
+-- Folder to hold advanced ESP
+local ESPFolder = Instance.new("Folder")
+ESPFolder.Name = "ESPFolder"
+ESPFolder.Parent = game:GetService("CoreGui")
+
+-- ================= Original ESP Functions =================
+local function createOrUpdateHighlight(model, outlineColor, fillColor, group)
+    if not (model and model.Parent) then return end
+    for h,meta in pairs(ESPHighlights) do
+        if meta.model == model then
+            pcall(function()
+                h.OutlineColor = outlineColor
+                h.FillColor = fillColor
+            end)
+            meta.group = group
+            return
+        end
+    end
+    local ok, h = pcall(function()
+        local hi = Instance.new("Highlight")
+        hi.Adornee = model
+        hi.Parent = model
+        hi.FillTransparency = 0.75
+        hi.FillColor = fillColor
+        hi.OutlineColor = outlineColor
+        hi.OutlineTransparency = 0
+        return hi
+    end)
+    if ok and h then ESPHighlights[h] = { model = model, group = group } end
+end
+
+local function clearAllHighlights()
+    for h,_ in pairs(ESPHighlights) do
+        if h and h.Parent then pcall(function() h:Destroy() end) end
+        ESPHighlights[h] = nil
+    end
+    ESPHighlights = {}
+end
+
+local function trimDead()
+    for h,meta in pairs(ESPHighlights) do
+        if not meta or not meta.model or not meta.model.Parent then
+            if h and h.Parent then pcall(function() h:Destroy() end) end
+            ESPHighlights[h] = nil
+        end
+    end
+end
+
+local function scanAndApply()
+    local genFolder = Workspace:FindFirstChild("Map") and Workspace.Map:FindFirstChild("Ingame") and Workspace.Map.Ingame:FindFirstChild("Map")
+    if genFolder then
+        for _,v in pairs(genFolder:GetChildren()) do
+            if v:IsA("Model") and v.Name == "Generator" then createOrUpdateHighlight(v, generatorColor, generatorColor, "Generator") end
+        end
+    end
+    local pf = Workspace:FindFirstChild("Players")
+    if pf then
+        local killers = pf:FindFirstChild("Killers")
+        if killers then for _,m in pairs(killers:GetChildren()) do if m:IsA("Model") then createOrUpdateHighlight(m, killerColor, Color3.fromRGB(255,128,128), "Killer") end end end
+        local survivors = pf:FindFirstChild("Survivors")
+        if survivors then for _,m in pairs(survivors:GetChildren()) do if m:IsA("Model") then createOrUpdateHighlight(m, survivorColor, survivorColor, "Survivor") end end end
+    end
+end
+
+local function startEspLoop()
+    if espRunning then return end
+    espRunning = true
+    task.spawn(function()
+        while espRunning do
+            trimDead()
+            scanAndApply()
+            task.wait(2)
+        end
+    end)
+end
+
+local function stopEspLoop()
+    espRunning = false
+    clearAllHighlights()
+end
+
+EspTab:CreateToggle({
+    Name = "ESP Toggle",
+    CurrentValue = false,
+    Flag = "ESPToggle",
+    Callback = function(state)
+        if state then startEspLoop(); safeNotify({Title="ESP", Content="Enabled", Duration=2}) else stopEspLoop(); safeNotify({Title="ESP", Content="Disabled", Duration=2}) end
+    end
+})
+
+-- Original color pickers
+EspTab:CreateColorPicker({
+    Name = "Survivor ESP Color",
+    Color = survivorColor,
+    Flag = "SurvColor",
+    Callback = function(c)
+        survivorColor = c
+        for h,meta in pairs(ESPHighlights) do if meta and meta.group == "Survivor" then pcall(function() h.OutlineColor = c; h.FillColor = c end) end end
+    end
+})
+EspTab:CreateColorPicker({
+    Name = "Killer ESP Color",
+    Color = killerColor,
+    Flag = "KillerColor",
+    Callback = function(c) killerColor = c; for h,meta in pairs(ESPHighlights) do if meta and meta.group == "Killer" then pcall(function() h.OutlineColor = c end) end end end
+})
+EspTab:CreateColorPicker({
+    Name = "Generator ESP Color",
+    Color = generatorColor,
+    Flag = "GenColor",
+    Callback = function(c) generatorColor = c; for h,meta in pairs(ESPHighlights) do if meta and meta.group == "Generator" then pcall(function() h.OutlineColor = c; h.FillColor = c end) end end end
+})
+
+-- ================= Advanced ESP =================
+local activeESP = {}
+local defaultColors = {
+    JohnDoeESP = Color3.fromRGB(255, 255, 255),
+    MinionESP = Color3.fromRGB(255, 0, 0),
+    ProjectileESP = Color3.fromRGB(255, 0, 255),
+    DispenserESP = Color3.fromRGB(255, 255, 0),
+    PizzaESP = Color3.fromRGB(255, 165, 0),
+    HealthESP = Color3.fromRGB(0, 255, 0),
+    CloneESP = Color3.fromRGB(0, 255, 255)
+}
+
+local function CreateHighlightAdvanced(obj, color, id, billboard)
+    if not obj or not obj:IsDescendantOf(workspace) then return end
+    local existing = ESPFolder:FindFirstChild(tostring(obj:GetFullName()))
+    if existing then return end
+
+    if billboard then
+        local bill = Instance.new("BillboardGui")
+        bill.Name = id .. "_" .. obj:GetFullName()
+        bill.Adornee = obj
+        bill.Size = UDim2.new(0,50,0,50)
+        bill.AlwaysOnTop = true
+        local frame = Instance.new("Frame", bill)
+        frame.BackgroundColor3 = color
+        frame.BackgroundTransparency = 0.5
+        frame.Size = UDim2.new(1,0,1,0)
+        frame.BorderSizePixel = 0
+        bill.Parent = ESPFolder
+    else
+        local highlight = Instance.new("Highlight")
+        highlight.Name = id .. "_" .. obj:GetFullName()
+        highlight.Adornee = obj
+        highlight.FillColor = color
+        highlight.FillTransparency = 0.5
+        highlight.OutlineColor = color
+        highlight.OutlineTransparency = 0
+        highlight.Parent = ESPFolder
+    end
+end
+
+local function ClearESPFor(id)
+    for _,v in pairs(ESPFolder:GetChildren()) do
+        if string.find(v.Name, id) then
+            v:Destroy()
+        end
+    end
+end
+
+local function AddESPForNames(partialNames, color, id, billboard, fullModel)
+    for _, obj in pairs(workspace:GetDescendants()) do
+        for _, name in pairs(partialNames) do
+            if string.find(string.lower(obj.Name), string.lower(name)) then
+                if obj:IsA("Model") and fullModel then
+                    CreateHighlightAdvanced(obj, color, id)
+                elseif obj:IsA("Model") or obj:IsA("Part") then
+                    if billboard and obj:FindFirstChild("HumanoidRootPart") then
+                        CreateHighlightAdvanced(obj.HumanoidRootPart, color, id, true)
+                    else
+                        CreateHighlightAdvanced(obj, color, id)
+                    end
+                end
+            end
+        end
+    end
+end
+
+workspace.DescendantAdded:Connect(function(obj)
+    task.wait(0.2)
+    for id, info in pairs(activeESP) do
+        if info.Enabled then
+            for _, name in pairs(info.Names) do
+                if string.find(string.lower(obj.Name), string.lower(name)) then
+                    if obj:IsA("Model") and info.FullModel then
+                        CreateHighlightAdvanced(obj, info.Color, id)
+                    elseif obj:IsA("Model") or obj:IsA("Part") then
+                        if info.Billboard and obj:FindFirstChild("HumanoidRootPart") then
+                            CreateHighlightAdvanced(obj.HumanoidRootPart, info.Color, id, true)
+                        else
+                            CreateHighlightAdvanced(obj, info.Color, id)
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+local function MakeESP(name, id, color, partialNames, billboard, fullModel)
+    activeESP[id] = { Enabled = false, Names = partialNames, Color = color, Billboard = billboard, FullModel = fullModel }
+
+    EspTab:CreateToggle({
+        Name = name,
+        CurrentValue = false,
+        Flag = id,
+        Callback = function(Value)
+            activeESP[id].Enabled = Value
+            ClearESPFor(id)
+            if Value then AddESPForNames(partialNames, color, id, billboard, fullModel) end
+        end
+    })
+
+    EspTab:CreateColorPicker({
+        Name = name.." Color",
+        Color = color,
+        Flag = id.."_Color",
+        Callback = function(c)
+            activeESP[id].Color = c
+            ClearESPFor(id)
+            if activeESP[id].Enabled then AddESPForNames(partialNames, c, id, billboard, fullModel) end
+        end
+    })
+end
+
+-- Add the advanced ESP toggles
+MakeESP("John Doe ESP", "JohnDoeESP", defaultColors.JohnDoeESP, {"Spike","Shadow"}, true, false)
+MakeESP("Minion ESP", "MinionESP", defaultColors.MinionESP, {"1x1x1x1Zombie","PizzaDeliveryRig"}, false, true)
+MakeESP("Projectile ESP", "ProjectileESP", defaultColors.ProjectileESP, {"Swords","Shockwave","HumanoidRootProjectile"}, true, false)
+MakeESP("Dispenser & Sentry ESP", "DispenserESP", defaultColors.DispenserESP, {"BuildermanDispenser","BuildermanSentry"}, false, false)
+MakeESP("Pizza ESP", "PizzaESP", defaultColors.PizzaESP, {"Pizza"}, false, false)
+MakeESP("Cola & Medkit ESP", "HealthESP", defaultColors.HealthESP, {"Medkit","BloxyCola"}, false, false)
+MakeESP("00707 ESP", "CloneESP", defaultColors.CloneESP, {"007n7"}, false, false)
+
+-- Cleanup on teleport
+game:GetService("Players").LocalPlayer.OnTeleport:Connect(function()
+    ESPFolder:Destroy()
+end)
+
+-- ================= GENERATOR TAB =================
+local GenTab = Window:CreateTab("Generators", "gallery-vertical-end")
+GenTab:CreateSection("Generator Actions")
+
+local generatorDelay = 2.5
+local autoFinish = false
+
+GenTab:CreateSlider({
+    Name = "Generator Completion Delay",
+    Range = {1, 10},
+    Increment = 0.5,
+    Suffix = " sec",
+    CurrentValue = generatorDelay,
+    Flag = "GenDelaySlider",
+    Callback = function(value)
+        generatorDelay = value
+    end
+})
+
+GenTab:CreateToggle({
+    Name = "Auto Finish Generator",
+    CurrentValue = false,
+    Flag = "AutoFinishToggle",
+    Callback = function(state)
+        autoFinish = state
+        if autoFinish then
+            Rayfield:Notify({Title="Generator", Content="Auto finish enabled", Duration=2})
+            task.spawn(function()
+                while autoFinish do
+                    local ok, m = pcall(function() return workspace:FindFirstChild("Map") end)
+                    if ok and m and m:FindFirstChild("Ingame") and m.Ingame:FindFirstChild("Map") then
+                        for _,v in pairs(m.Ingame.Map:GetChildren()) do
+                            if v:IsA("Model") and v.Name == "Generator" then
+                                local r = v:FindFirstChild("Remotes") and v.Remotes:FindFirstChild("RE")
+                                if r then pcall(function() r:FireServer() end) end
+                            end
+                        end
+                    end
+                    task.wait(generatorDelay)
+                end
+            end)
+        else
+            Rayfield:Notify({Title="Generator", Content="Auto finish disabled", Duration=2})
+        end
+    end
+})
+
+GenTab:CreateButton({
+    Name = "Finish One Generator",
+    Callback = function()
+        local m = workspace:FindFirstChild("Map")
+        if m and m:FindFirstChild("Ingame") and m.Ingame:FindFirstChild("Map") then
+            for _,v in pairs(m.Ingame.Map:GetChildren()) do
+                if v:IsA("Model") and v.Name == "Generator" then
+                    local r = v:FindFirstChild("Remotes") and v.Remotes:FindFirstChild("RE")
+                    if r then
+                        pcall(function() r:FireServer() end)
+                        Rayfield:Notify({Title="Generator", Content="Finished one generator", Duration=2})
+                        return
+                    end
+                end
+            end
+        end
+        Rayfield:Notify({Title="Generator", Content="No generator found", Duration=2})
+    end
+})
+
+GenTab:CreateButton({
+    Name = "Teleport to Nearest Generator",
+    Callback = function()
+        local char = LocalPlayer.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if not hrp then safeNotify({Title="Teleport", Content="Character not ready", Duration=2}); return end
+        local nearest, nd = nil, math.huge
+        local m = workspace:FindFirstChild("Map")
+        if m and m:FindFirstChild("Ingame") and m.Ingame:FindFirstChild("Map") then
+            for _,v in pairs(m.Ingame.Map:GetChildren()) do
+                if v:IsA("Model") and v.Name == "Generator" then
+                    local base = v:FindFirstChild("Base") or v.PrimaryPart or v:FindFirstChildWhichIsA("BasePart")
+                    if base then
+                        local dist = (base.Position - hrp.Position).Magnitude
+                        if dist < nd then nd = dist; nearest = base end
+                    end
+                end
+            end
+        end
+        if nearest then
+            pcall(function() hrp.CFrame = nearest.CFrame + Vector3.new(0,3,0) end)
+            safeNotify({Title="Teleported", Content="Moved to nearest generator", Duration=2})
+        else
+            safeNotify({Title="Teleport", Content="No generator found", Duration=2})
+        end
+    end
+})
+
+-- ===== GENERATOR BUTTON GUI TOGGLE (FIXED) =====
+local p = game.Players.LocalPlayer
+local cd = false
+local cdT = 2.5
+local respawnConnection = nil
+
+local function makeButton()
+	if p.PlayerGui:FindFirstChild("GeneratorGUI") then return end
+	local g = Instance.new("ScreenGui")
+	g.Name = "GeneratorGUI"
+	g.ResetOnSpawn = false
+	g.Parent = p:WaitForChild("PlayerGui")
+
+	local b = Instance.new("TextButton")
+	b.Size = UDim2.new(0, 100, 0, 40)
+	b.BackgroundColor3 = Color3.new(0, 0, 0)
+	b.TextColor3 = Color3.new(1, 1, 1)
+	b.Text = "Click"
+	b.Active = true
+	b.Draggable = true
+	b.Parent = g
+
+	local o = Instance.new("UIStroke")
+	o.Color = Color3.new(1, 0, 0)
+	o.Thickness = 3
+	o.Parent = b
+
+	local pos = p.PlayerGui:GetAttribute("ButtonPos")
+	if pos then
+		b.Position = UDim2.new(pos.XScale, pos.XOffset, pos.YScale, pos.YOffset)
+	else
+		b.Position = UDim2.new(0, 100, 0, 100)
+	end
+
+	b:GetPropertyChangedSignal("Position"):Connect(function()
+		p.PlayerGui:SetAttribute("ButtonPos", {
+			XScale = b.Position.X.Scale,
+			XOffset = b.Position.X.Offset,
+			YScale = b.Position.Y.Scale,
+			YOffset = b.Position.Y.Offset
+		})
+	end)
+
+	b.MouseButton1Click:Connect(function()
+		if cd then return end
+		cd = true
+		b.Text = "Wait..."
+		o.Color = Color3.fromRGB(150, 0, 0)
+
+		task.spawn(function()
+			local m = workspace:FindFirstChild("Map")
+			if m and m:FindFirstChild("Ingame") and m.Ingame:FindFirstChild("Map") then
+				for _, v in pairs(m.Ingame.Map:GetChildren()) do
+					if v:IsA("Model") and v.Name == "Generator" then
+						local r = v:FindFirstChild("Remotes") and v.Remotes:FindFirstChild("RE")
+						if r then r:FireServer() end
+					end
+				end
+			end
+		end)
+
+		task.wait(cdT)
+		cd = false
+		b.Text = "Click"
+		o.Color = Color3.new(1, 0, 0)
+	end)
+end
+
+local function removeButton()
+	local g = p.PlayerGui:FindFirstChild("GeneratorGUI")
+	if g then g:Destroy() end
+end
+
+GenTab:CreateToggle({
+	Name = "Show Generator Click Button",
+	CurrentValue = false,
+	Flag = "GeneratorButtonToggle",
+	Callback = function(state)
+		if state then
+			makeButton()
+
+			-- connect once; if re-enabled later, reconnect cleanly
+			if respawnConnection then respawnConnection:Disconnect() end
+			respawnConnection = p.CharacterAdded:Connect(function()
+				task.wait(1)
+				if Rayfield.Flags.GeneratorButtonToggle.CurrentValue then
+					makeButton()
+				end
+			end)
+
+			Rayfield:Notify({
+				Title = "Generator GUI",
+				Content = "Button created",
+				Duration = 2
+			})
+		else
+			removeButton()
+
+			-- disconnect the respawn event to stop it from remaking the GUI
+			if respawnConnection then
+				respawnConnection:Disconnect()
+				respawnConnection = nil
+			end
+
+			Rayfield:Notify({
+				Title = "Generator GUI",
+				Content = "Button removed",
+				Duration = 2
+			})
+		end
+	end
+})
+
+-- ================= MISC TAB =================
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local MiscTab = Window:CreateTab("Misc", "laugh")
+
+-- ========== Cool Misc (renamed from "Character Utilities") ==========
+MiscTab:CreateSection("Cool Misc")
+
+
+-- ====================== Invisibility Section ======================
+-- Load services
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local LocalPlayer = Players.LocalPlayer
+local Undetectable
+pcall(function()
+    if ReplicatedStorage:FindFirstChild("Modules")
+    and ReplicatedStorage.Modules:FindFirstChild("StatusEffects")
+    and ReplicatedStorage.Modules.StatusEffects:FindFirstChild("Undetectable") then
+        Undetectable = require(ReplicatedStorage.Modules.StatusEffects.Undetectable)
+    end
+end)
+
+local animationId = "rbxassetid://75804462760596"
+local loadedAnim = nil
+local manualInvis = false
+local undetectHookEnabled = false
+local originalApplied, originalRemoved = nil, nil
+
+-- ===== Animation Functions =====
+local function playInvisAnim(char)
+    if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if hum then
+        if loadedAnim then loadedAnim:Stop() end
+        local anim = Instance.new("Animation")
+        anim.AnimationId = animationId
+        loadedAnim = hum:LoadAnimation(anim)
+        loadedAnim:Play()
+        loadedAnim:AdjustSpeed(0)
+    end
+end
+
+local function stopInvisAnim()
+    if loadedAnim then
+        loadedAnim:Stop()
+        loadedAnim = nil
+    end
+end
+
+-- ===== Manual Invisibility Toggle (Updated Version) =====
+local animationId = "rbxassetid://75804462760596"
+local loadedAnim
+local manualInvis = false
+
+-- Functions
+local function setInvisibility(state)
+    local char = LocalPlayer.Character
+    if not char then return end
+
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") or part:IsA("Decal") then
+            if state then
+                part.LocalTransparencyModifier = 1
+            else
+                part.LocalTransparencyModifier = 0
+            end
+        end
+    end
+end
+
+local function playInvisAnim(char)
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if hum then
+        local anim = Instance.new("Animation")
+        anim.AnimationId = animationId
+        loadedAnim = hum:LoadAnimation(anim)
+        loadedAnim:Play()
+        loadedAnim:AdjustSpeed(0)
+    end
+end
+
+local function stopInvisAnim()
+    if loadedAnim then
+        loadedAnim:Stop()
+        loadedAnim = nil
+    end
+end
+
+-- Toggle
+MiscTab:CreateToggle({
+    Name = "Manual Invisibility",
+    CurrentValue = false,
+    Flag = "ManualInvis",
+    Callback = function(state)
+        manualInvis = state
+        if state then
+            if LocalPlayer.Character then
+                setInvisibility(true)
+                playInvisAnim(LocalPlayer.Character)
+            end
+            LocalPlayer.CharacterAdded:Connect(function(char)
+                task.wait(0.5)
+                if manualInvis then
+                    setInvisibility(true)
+                    playInvisAnim(char)
+                end
+            end)
+        else
+            stopInvisAnim()
+            setInvisibility(false)
+        end
+    end
+})
+
+-- ===== Auto-Invisibility Hook =====
+local function enableUndetectHook()
+    if not Undetectable or undetectHookEnabled then return end
+    originalApplied = Undetectable.Applied
+    originalRemoved = Undetectable.Removed
+
+    Undetectable.Applied = function(data)
+        pcall(function()
+            if data.Player == LocalPlayer then
+                local char = data.Character or data.Player.Character
+                if char and not manualInvis then
+                    playInvisAnim(char)
+                end
+            end
+        end)
+        if originalApplied then pcall(function() originalApplied(data) end) end
+    end
+
+    Undetectable.Removed = function(data)
+        pcall(function()
+            if data.Player == LocalPlayer and not manualInvis then
+                stopInvisAnim()
+            end
+        end)
+        if originalRemoved then pcall(function() originalRemoved(data) end) end
+    end
+
+    undetectHookEnabled = true
+    safeNotify({Title="Undetect Hook", Content="Enabled auto-invis on Undetectable", Duration=3})
+end
+
+local function disableUndetectHook()
+    if not undetectHookEnabled then return end
+    if Undetectable and originalApplied and originalRemoved then
+        pcall(function()
+            Undetectable.Applied = originalApplied
+            Undetectable.Removed = originalRemoved
+        end)
+    end
+    undetectHookEnabled = false
+    safeNotify({Title="Undetect Hook", Content="Disabled auto-invis", Duration=3})
+end
+
+-- ===== Auto-Invisibility Toggle =====
+MiscTab:CreateToggle({
+    Name = "Auto-Invisible When Undetected",
+    CurrentValue = false,
+    Flag = "AutoUndetectInvis",
+    Callback = function(state)
+        pcall(function()
+            if state then
+                enableUndetectHook()
+            else
+                disableUndetectHook()
+            end
+        end)
+    end
+})
+
+-- ===== CHAT WINDOW TOGGLE =====
+local chatEnabled = false
+local TextChatService = game:GetService("TextChatService")
+
+local function spawnChatWindow()
+    local player = Players.LocalPlayer
+    if not player then return end
+    local playerGui = player:WaitForChild("PlayerGui")
+    local chatWindowConfig = TextChatService:WaitForChild("ChatWindowConfiguration")
+    chatWindowConfig.Enabled = true
+
+    local chatGui = playerGui:FindFirstChild("Chat")
+    if not chatGui then
+        local success, ChatModule = pcall(function()
+            return require(player:WaitForChild("PlayerScripts"):WaitForChild("ChatScript"))
+        end)
+        if success and ChatModule then pcall(function() ChatModule:Init() end) end
+    end
+end
+
+MiscTab:CreateToggle({
+    Name = "Show Chat Window",
+    CurrentValue = false,
+    Flag = "ShowChatWindow",
+    Callback = function(state)
+        chatEnabled = state
+        local player = Players.LocalPlayer
+        local playerGui = player:WaitForChild("PlayerGui")
+        local chatWindowConfig = TextChatService:WaitForChild("ChatWindowConfiguration")
+
+        if state then
+            spawnChatWindow()
+            player.CharacterAdded:Connect(function()
+                task.wait(1)
+                if chatEnabled then spawnChatWindow() end
+            end)
+            safeNotify({Title="Chat Window", Content="Enabled", Duration=2})
+        else
+            chatWindowConfig.Enabled = false
+            local chatGui = playerGui:FindFirstChild("Chat")
+            if chatGui then chatGui:Destroy() end
+            safeNotify({Title="Chat Window", Content="Disabled", Duration=2})
+        end
+    end
+})
+
+-- ================= Buttons moved into Cool Misc (only these two moved) =================
+
+-- SEE HIDDEN STATS (exact logic you provided)
+MiscTab:CreateButton({
+    Name = "See Hidden Stats",
+    Callback = function()
+        -- WARNING: Heads up! This script has not been verified by ScriptBlox. Use at your own risk!
+        for _, player in ipairs(Players:GetPlayers()) do
+            local privacy = player:FindFirstChild("PlayerData") 
+                and player.PlayerData:FindFirstChild("Settings") 
+                and player.PlayerData.Settings:FindFirstChild("Privacy")
+            
+            if privacy then
+                local function disableValue(valueName)
+                    local val = privacy:FindFirstChild(valueName)
+                    if val and val:IsA("BoolValue") then
+                        val.Value = false
+                    end
+                end
+                
+                disableValue("HideSurvivorWins")
+                disableValue("HidePlaytime")
+                disableValue("HideKillerWins")
+            end
+        end
+
+        Players.PlayerAdded:Connect(function(player)
+            player.CharacterAdded:Wait()
+            task.wait()
+            
+            local privacy = player:FindFirstChild("PlayerData") 
+                and player.PlayerData:FindFirstChild("Settings") 
+                and player.PlayerData.Settings:FindFirstChild("Privacy")
+            
+            if privacy then
+                for _, name in ipairs({"HideSurvivorWins", "HidePlaytime", "HideKillerWins"}) do
+                    local val = privacy:FindFirstChild(name)
+                    if val and val:IsA("BoolValue") then
+                        val.Value = false
+                    end
+                end
+            end
+        end)
+    end
+})
+
+-- PROTECT NAMES (NTK) (exact logic you provided)
+MiscTab:CreateButton({
+    Name = "Protect Names (NTK)",
+    Callback = function()
+        -- Services
+        local RunService = game:GetService("RunService")
+        local LocalPlayer = Players.LocalPlayer
+        local Workspace = game:GetService("Workspace")
+
+        -- Variables
+        local toggled = true -- Automatically start
+        local nameProtectConnection = nil
+
+        -- Hide Name Protect (Beta) by Deathsaken
+        local function NameProtect(toggled)
+            while toggled do
+                wait()
+                local gui = LocalPlayer.PlayerGui
+                if not gui then return end
+
+                -- 1 – TemporaryUI.PlayerInfo.CurrentSurvivors -> Username
+                local currentSurvivors = gui:FindFirstChild("TemporaryUI") 
+                    and gui.TemporaryUI:FindFirstChild("PlayerInfo") 
+                    and gui.TemporaryUI.PlayerInfo:FindFirstChild("CurrentSurvivors")
+
+                if currentSurvivors then
+                    for _, v in pairs(currentSurvivors:GetDescendants()) do
+                        if v:IsA("TextLabel") and v.Name == "Username" then
+                            v.Text = "Protected"
+                        end
+                    end
+                end
+
+                -- 2 – TemporaryUI -> any TextLabel named "Title3"
+                local tempUI = gui:FindFirstChild("TemporaryUI")
+                if tempUI then
+                    for _, v in pairs(tempUI:GetDescendants()) do
+                        if v:IsA("TextLabel") and v.Name == "Title3" then
+                            v.Text = "Protected"
+                        end
+                    end
+                end
+
+                -- 3 – MainUI.PlayerListHolder.Contents.Players -> Username
+                local mainPlayers = gui:FindFirstChild("MainUI") 
+                    and gui.MainUI:FindFirstChild("PlayerListHolder") 
+                    and gui.MainUI.PlayerListHolder:FindFirstChild("Contents") 
+                    and gui.MainUI.PlayerListHolder.Contents:FindFirstChild("Players")
+
+                if mainPlayers then
+                    for _, v in pairs(mainPlayers:GetDescendants()) do
+                        if v:IsA("TextLabel") and v.Name == "Username" then
+                            v.Text = "Protected"
+                        end
+                    end
+                end
+
+                -- 4 – TemporaryUI -> PlayerName / PlayerUsername text labels matching LocalPlayer usernames
+                if tempUI then
+                    for _, v in pairs(tempUI:GetDescendants()) do
+                        if v:IsA("TextLabel") and (v.Name == "PlayerName" or v.Name == "PlayerUsername") then
+                            for _, plr in pairs(Players:GetPlayers()) do
+                                if v.Text == plr.Name then
+                                    v.Text = "Protected"
+                                    v.Text = "@Protected" -- optional
+                                end
+                            end
+                        end
+                    end
+                end
+
+                -- 5 – Workspace.Players.Spectating -> humanoids, set DisplayDistanceType to None
+                local spectatingFolder = workspace:FindFirstChild("Players") 
+                    and workspace.Players:FindFirstChild("Spectating")
+
+                if spectatingFolder then
+                    for _, char in pairs(spectatingFolder:GetChildren()) do
+                        local humanoid = char:FindFirstChildWhichIsA("Humanoid")
+                        if humanoid then
+                            humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+                        end
+                    end
+                end
+
+                -- 6 – ImageLabels named after LocalPlayers
+                for _, plr in pairs(Players:GetPlayers()) do
+                    local imgLabel = gui:FindFirstChild(plr.Name, true) -- recursive
+                    if imgLabel and imgLabel:IsA("ImageLabel") then
+                        local basicInfo = imgLabel:FindFirstChild("BasicInfo")
+                        if basicInfo then
+                            local nameLabel = basicInfo:FindFirstChild("PlayerName")
+                            if nameLabel and nameLabel:IsA("TextLabel") then
+                                nameLabel.Text = "Protected"
+                            end
+                            local usernameLabel = basicInfo:FindFirstChild("PlayerUsername")
+                            if usernameLabel and usernameLabel:IsA("TextLabel") then
+                                usernameLabel.Text = "Protected"
+                            end
+                        end
+                    end
+                end
+
+                -- 7 – MainUI.Spectate -> Username
+                local spectateUI = gui:FindFirstChild("MainUI") 
+                    and gui.MainUI:FindFirstChild("Spectate")
+
+                if spectateUI then
+                    for _, v in pairs(spectateUI:GetDescendants()) do
+                        if v:IsA("TextLabel") and v.Name == "Username" then
+                            v.Text = "Protected"
+                        end
+                    end
+                end
+
+                -- 8 – EndScreen -> ChosenValue.Title
+                local chosenTitle = gui:FindFirstChild("EndScreen")
+                    and gui.EndScreen:FindFirstChild("Main")
+                    and gui.EndScreen.Main:FindFirstChild("PlayerStats")
+                    and gui.EndScreen.Main.PlayerStats:FindFirstChild("Header")
+                    and gui.EndScreen.Main.PlayerStats.Header:FindFirstChild("PlayerDropdown")
+                    and gui.EndScreen.Main.PlayerStats.Header.PlayerDropdown:FindFirstChild("DropdownFrame")
+                    and gui.EndScreen.Main.PlayerStats.Header.PlayerDropdown.DropdownFrame:FindFirstChild("ChosenValue")
+                    and gui.EndScreen.Main.PlayerStats.Header.PlayerDropdown.DropdownFrame.ChosenValue:FindFirstChild("Title")
+
+                if chosenTitle and chosenTitle:IsA("TextLabel") then
+                    chosenTitle.Text = "Protected"
+                end
+
+                -- 9 – EndScreen.WinnerTitle.Usernames
+                local winnerUsernames = gui:FindFirstChild("EndScreen")
+                    and gui.EndScreen:FindFirstChild("WinnerTitle")
+                    and gui.EndScreen.WinnerTitle:FindFirstChild("Usernames")
+
+                if winnerUsernames and winnerUsernames:IsA("TextLabel") then
+                    winnerUsernames.Text = "Protected"
+                end
+            end
+        end
+
+        -- Start Name Protect
+        NameProtect(toggled)
+
+        -- Cleanup on script exit
+        game:BindToClose(function()
+            if nameProtectConnection then
+                nameProtectConnection:Disconnect()
+            end
+        end)
+    end
+})
+
+-- ================= DEVICE SPOOFER (UNCHANGED) =================
+MiscTab:CreateSection("Device Spoofer FE")
+local UserInputService = game:GetService("UserInputService")
+
+local Network
+pcall(function()
+    if ReplicatedStorage:FindFirstChild("Modules") and ReplicatedStorage.Modules:FindFirstChild("Network") then
+        Network = require(ReplicatedStorage.Modules.Network)
+    elseif ReplicatedStorage:FindFirstChild("Network") then
+        Network = require(ReplicatedStorage.Network)
+    end
+end)
+
+local function detectOriginalDevice()
+    local input = UserInputService:GetLastInputType()
+    if input.Name:find("Gamepad") then return "Console" end
+    if input.Name:find("Touch") then return "Mobile" end
+    return "PC"
+end
+
+local spoofEnabled = false
+local ForcedDevice = nil
+local applyInProgress = false
+local appliedDevice = nil
+local originalDevice = detectOriginalDevice()
+
+local DeviceSpoof = {}
+DeviceSpoof._bind = Instance.new("BindableEvent")
+DeviceSpoof.Changed = DeviceSpoof._bind.Event
+DeviceSpoof.Value = originalDevice
+
+local function getDeviceLabel()
+    local spoofDisplay = appliedDevice or "None"
+    return "Device: " .. tostring(originalDevice) .. " | Spoofed: " .. tostring(spoofDisplay)
+end
+
+local statusLabel = MiscTab:CreateLabel(getDeviceLabel())
+
+local function ApplySpoof()
+    if not spoofEnabled then
+        safeNotify({Title="Device Spoofer", Content="Enable spoofing first!", Duration=2})
+        return
+    end
+    if applyInProgress then return end
+    applyInProgress = true
+    local deviceToApply = ForcedDevice or originalDevice
+    if deviceToApply == "Disable" then deviceToApply = originalDevice end
+    DeviceSpoof.Value = deviceToApply
+    pcall(function() DeviceSpoof._bind:Fire(deviceToApply) end)
+    appliedDevice = deviceToApply
+    task.spawn(function()
+        pcall(function()
+            if Network then
+                Network:FireServerConnection("SetDevice", "REMOTE_EVENT", deviceToApply)
+            end
+        end)
+        applyInProgress = false
+    end)
+    statusLabel:Set(getDeviceLabel())
+    safeNotify({Title="Device Spoofer", Content="Device set to " .. deviceToApply, Duration=2})
+end
+
+local dropdownOptions = {"Disable", "Console", "Mobile", "PC", "Unknown"}
+
+MiscTab:CreateDropdown({
+    Name = "Select Device",
+    Options = dropdownOptions,
+    CurrentOption = {"Disable"},
+    MultipleOptions = false,
+    Callback = function(opts)
+        local selected = opts[1]
+        if selected == "Disable" then
+            spoofEnabled = false
+            ForcedDevice = nil
+            appliedDevice = nil
+            DeviceSpoof.Value = originalDevice
+            pcall(function() DeviceSpoof._bind:Fire(originalDevice) end)
+            statusLabel:Set(getDeviceLabel())
+            safeNotify({Title="Device Spoofer", Content="Spoofing disabled", Duration=2})
+        else
+            ForcedDevice = selected == "Unknown" and "Idk" or selected
+        end
+    end
+})
+
+MiscTab:CreateToggle({
+    Name = "Enable Spoofing",
+    CurrentValue = false,
+    Callback = function(val)
+        spoofEnabled = val
+        if spoofEnabled then
+            UserInputService.LastInputTypeChanged:Connect(function()
+                if spoofEnabled then ApplySpoof() end
+            end)
+        end
+    end
+})
+
+MiscTab:CreateButton({
+    Name = "Apply Device Spoof",
+    Callback = function()
+        ApplySpoof()
+    end
+})
+
+MiscTab:CreateButton({
+    Name = "Reset Spoof",
+    Callback = function()
+        spoofEnabled = false
+        ForcedDevice = nil
+        appliedDevice = nil
+        applyInProgress = false
+        DeviceSpoof.Value = originalDevice
+        pcall(function() DeviceSpoof._bind:Fire(originalDevice) end)
+        if Network then
+            pcall(function()
+                Network:FireServerConnection("SetDevice", "REMOTE_EVENT", originalDevice)
+            end)
+        end
+        statusLabel:Set(getDeviceLabel())
+        safeNotify({Title="Device Spoofer", Content="Reset complete", Duration=2})
+    end
+})
+
+-- ================= CLIENT-SIDED STATS =================
+-- Section only for description
+MiscTab:CreateSection("Client-Sided Stats")
+MiscTab:CreateLabel("ITS CLIENT SIDED!! PEOPLE CANT SEE IT.")
+
+-- KillerChance Input (must be attached directly to MiscTab)
+MiscTab:CreateInput({
+    Name = "KillerChance",
+    PlaceholderText = "Enter KillerChance",
+    RemoveTextAfterFocusLost = false,
+    Callback = function(value)
+        local num = tonumber(value)
+        if num then
+            local stat = Players.LocalPlayer:WaitForChild("leaderstats"):FindFirstChild("KillerChance")
+            if stat then
+                stat.Value = num
+            else
+                warn("KillerChance not found!")
+            end
+        else
+            warn("Invalid number!")
+        end
+    end
+})
+
+-- Money Input (must be attached directly to MiscTab)
+MiscTab:CreateInput({
+    Name = "Money",
+    PlaceholderText = "Enter Money",
+    RemoveTextAfterFocusLost = false,
+    Callback = function(value)
+        local num = tonumber(value)
+        if num then
+            local stat = Players.LocalPlayer:WaitForChild("leaderstats"):FindFirstChild("Money")
+            if stat then
+                stat.Value = num
+            else
+                warn("Money not found!")
+            end
+        else
+            warn("Invalid number!")
+        end
+    end
+})
+
+-- === EMOTES TAB ===
+-- (Paste this after your Rayfield window variable is created)
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+
+local LocalPlayer = Players.LocalPlayer
+local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+local Humanoid = Character:WaitForChild("Humanoid")
+local Animator = Humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator", Humanoid)
+local Root = Character:WaitForChild("HumanoidRootPart")
+
+-- Freeze / Unfreeze
+local function freezeCharacter()
+	if Root then Root.Anchored = true end
+end
+
+local function unfreezeCharacter()
+	if Root then Root.Anchored = false end
+end
+
+-- Handle respawn
+LocalPlayer.CharacterAdded:Connect(function(newChar)
+	Character = newChar
+	Humanoid = newChar:WaitForChild("Humanoid")
+	Animator = Humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator", Humanoid)
+	Root = newChar:WaitForChild("HumanoidRootPart")
+end)
+
+-- Emotes data
+local Emotes = {
+	["Shucks"] = {Animation = "rbxassetid://74238051754912", Sound = "rbxassetid://123236721947419"},
+	["Subterfuge"] = {Animation = "rbxassetid://87482480949358", Sound = "rbxassetid://132297506693854"},
+	["I Miss The Quiet"] = {Animation = "rbxassetid://100986631322204", Sound = "rbxassetid://131936418953291"},
+	["Silly Billy"] = {Animation = "rbxassetid://107464355830477", Sound = "rbxassetid://77601084987544"},
+	["Thick of It"] = {Animation = "rbxassetid://120176009143091", Sound = "rbxassetid://120176009143091"}
+}
+
+-- State
+local CurrentTrack
+local CurrentSound
+
+-- Stop function
+local function stopEmote()
+	if CurrentTrack then
+		CurrentTrack:Stop()
+		CurrentTrack = nil
+	end
+	if CurrentSound then
+		CurrentSound:Stop()
+		CurrentSound = nil
+	end
+	unfreezeCharacter()
+end
+
+-- Play function
+local function playEmote(name)
+	local emote = Emotes[name]
+	if not emote then return end
+
+	stopEmote() -- stop any previous emote before playing new one
+
+	local anim = Instance.new("Animation")
+	anim.AnimationId = emote.Animation
+	local track = Animator:LoadAnimation(anim)
+	track.Priority = Enum.AnimationPriority.Action
+	track.Looped = false
+	track:Play()
+
+	local sound = Instance.new("Sound")
+	sound.SoundId = emote.Sound
+	sound.Volume = 1
+	sound.Parent = Character
+	sound:Play()
+
+	CurrentTrack = track
+	CurrentSound = sound
+
+	freezeCharacter()
+
+	task.spawn(function()
+		track.Stopped:Wait()
+		unfreezeCharacter()
+	end)
+end
+
+-- Create Tab
+local Tab = Window:CreateTab("Emotes", "person-standing")
+
+-- === Disable Emote Section ===
+Tab:CreateSection("Disable Emote")
+
+Tab:CreateButton({
+	Name = "Stop Emote",
+	Callback = stopEmote,
+})
+
+Tab:CreateKeybind({
+	Name = "Stop Emote Keybind",
+	CurrentKeybind = "X",
+	HoldToInteract = false,
+	Flag = "StopEmoteKeybind",
+	Callback = stopEmote,
+})
+
+-- === Removed Emotes Section ===
+Tab:CreateSection("Removed Emotes")
+Tab:CreateButton({Name = "Play: Shucks", Callback = function() playEmote("Shucks") end})
+Tab:CreateButton({Name = "Play: Subterfuge", Callback = function() playEmote("Subterfuge") end})
+Tab:CreateButton({Name = "Play: I Miss The Quiet", Callback = function() playEmote("I Miss The Quiet") end})
+Tab:CreateButton({Name = "Play: Silly Billy", Callback = function() playEmote("Silly Billy") end})
+
+-- === Soundtrack Only Section ===
+Tab:CreateSection("Soundtrack Only")
+Tab:CreateButton({Name = "Play: Thick of It", Callback = function() playEmote("Thick of It") end})
+
+-- === Animation Toggles Section ===
+Tab:CreateSection("Animations")
+
+--// ANIMATION SETS
+local animSetA = {
+	idle = "rbxassetid://135419935358802", -- Stalker idle
+	walk = "rbxassetid://108287960442206"  -- Stalker walk
+}
+
+local animSetB = {
+	idle = "rbxassetid://74530436512522",  -- Dog idle
+	walk = "rbxassetid://109671225388655"  -- Dog walk
+}
+
+--// VARIABLES
+local activeSet = nil
+local walkTrack, idleTrack, runningConnection
+
+local function stopOldAnimations()
+	if runningConnection then runningConnection:Disconnect() end
+	if idleTrack then pcall(function() idleTrack:Stop() idleTrack:Destroy() end) end
+	if walkTrack then pcall(function() walkTrack:Stop() walkTrack:Destroy() end) end
+	walkTrack, idleTrack, runningConnection = nil, nil, nil
+end
+
+local function applyAnimations(character, animSet)
+	stopOldAnimations()
+	local humanoid = character:WaitForChild("Humanoid")
+	local animate = character:FindFirstChild("Animate")
+	if animate then animate.Disabled = true end
+
+	local idleAnim = Instance.new("Animation")
+	idleAnim.AnimationId = animSet.idle
+	idleTrack = humanoid:LoadAnimation(idleAnim)
+
+	local walkAnim = Instance.new("Animation")
+	walkAnim.AnimationId = animSet.walk
+	walkTrack = humanoid:LoadAnimation(walkAnim)
+
+	runningConnection = humanoid.Running:Connect(function(speed)
+		if speed > 0 then
+			if idleTrack.IsPlaying then idleTrack:Stop() end
+			if not walkTrack.IsPlaying then walkTrack:Play() end
+		else
+			if walkTrack.IsPlaying then walkTrack:Stop() end
+			if not idleTrack.IsPlaying then idleTrack:Play() end
+		end
+	end)
+
+	idleTrack:Play()
+end
+
+local function disableAnimations(character)
+	stopOldAnimations()
+	local animate = character:FindFirstChild("Animate")
+	if animate then animate.Disabled = false end
+	activeSet = nil
+end
+
+--// TOGGLES
+Tab:CreateToggle({
+	Name = "Stalker Animation",
+	CurrentValue = false,
+	Flag = "AnimSetA",
+	Callback = function(state)
+		local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+		if state then
+			pcall(function()
+				applyAnimations(character, animSetA)
+				activeSet = "A"
+				if Rayfield.Flags.AnimSetB then Rayfield.Flags.AnimSetB:Set(false) end
+			end)
+		else
+			if activeSet == "A" then
+				pcall(function() disableAnimations(character) end)
+			end
+		end
+	end,
+})
+
+Tab:CreateToggle({
+	Name = "Dog Animation",
+	CurrentValue = false,
+	Flag = "AnimSetB",
+	Callback = function(state)
+		local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+		if state then
+			pcall(function()
+				applyAnimations(character, animSetB)
+				activeSet = "B"
+				if Rayfield.Flags.AnimSetA then Rayfield.Flags.AnimSetA:Set(false) end
+			end)
+		else
+			if activeSet == "B" then
+				pcall(function() disableAnimations(character) end)
+			end
+		end
+	end,
+})
+
+--// RESET ON RESPAWN
+LocalPlayer.CharacterAdded:Connect(function(char)
+	disableAnimations(char)
+	if Rayfield.Flags.AnimSetA then Rayfield.Flags.AnimSetA:Set(false) end
+	if Rayfield.Flags.AnimSetB then Rayfield.Flags.AnimSetB:Set(false) end
+end)
+
+-- === Combat Tab: Two Toggles Only ===
+local CombatTab = Window:CreateTab("Guest1337", "circle-user-round")
+CombatTab:CreateSection("Guest 1337")
+
+------------------------------------------------------------
+-- // SERVICES
+------------------------------------------------------------
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local lp = Players.LocalPlayer
+
+------------------------------------------------------------
+-- // REMOTES
+------------------------------------------------------------
+local testRemote = ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Network"):WaitForChild("RemoteEvent")
+local blockAction = "UseActorAbility"
+local blockData = { buffer.fromstring("\"Block\"") }
+local punchAction = "UseActorAbility"
+local punchData = { buffer.fromstring("\"Punch\"") }
+------------------------------------------------------------
+-- // AUTO BLOCK & AUTO PUNCH (SOUND-BASED)
+------------------------------------------------------------
+local autoBlockEnabled = false
+local autoPunchEnabled = false
+local detectionRange = 20
+local soundHooks = {}
+local soundTriggeredUntil = {}
+
+-- ✅ Updated Audio trigger IDs for auto block
+local autoBlockTriggerSounds = {
+	["102228729296384"] = true,
+	["140242176732868"] = true,
+	["112809109188560"] = true,
+	["136323728355613"] = true,
+	["115026634746636"] = true,
+	["84116622032112"] = true,
+	["108907358619313"] = true,
+	["127793641088496"] = true,
+	["86174610237192"] = true,
+	["95079963655241"] = true,
+	["109348678063422"] = true,
+	["112395455254818"] = true,
+}
+
+------------------------------------------------------------
+-- // HELPERS
+------------------------------------------------------------
+local function extractNumericSoundId(sound)
+	if not sound or not sound.SoundId then return nil end
+	return tostring(sound.SoundId):match("%d+")
+end
+
+local function getSoundWorldPosition(sound)
+	if sound.Parent and sound.Parent:IsA("BasePart") then
+		return sound.Parent.Position
+	elseif sound.Parent and sound.Parent:IsA("Attachment") and sound.Parent.Parent:IsA("BasePart") then
+		return sound.Parent.Parent.Position
+	end
+	local found = sound.Parent and sound.Parent:FindFirstChildWhichIsA("BasePart", true)
+	if found then return found.Position end
+	return nil
+end
+
+------------------------------------------------------------
+-- // AUTO BLOCK LOGIC
+------------------------------------------------------------
+local function attemptAutoBlockForSound(sound)
+	if not autoBlockEnabled then return end
+	if not sound or not sound:IsA("Sound") or not sound.IsPlaying then return end
+
+	local id = extractNumericSoundId(sound)
+	if not id or not autoBlockTriggerSounds[id] then return end
+
+	local myRoot = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
+	if not myRoot then return end
+
+	if soundTriggeredUntil[sound] and tick() < soundTriggeredUntil[sound] then return end
+
+	local pos = getSoundWorldPosition(sound)
+	local shouldTrigger = (not pos) or ((myRoot.Position - pos).Magnitude <= detectionRange)
+
+	if shouldTrigger then
+		pcall(function()
+			testRemote:FireServer(blockAction, blockData)
+		end)
+		soundTriggeredUntil[sound] = tick() + 1.2
+	end
+end
+
+------------------------------------------------------------
+-- // AUTO PUNCH LOGIC
+------------------------------------------------------------
+local function attemptAutoPunchForSound(sound)
+	if not autoPunchEnabled then return end
+	if not sound or not sound:IsA("Sound") or not sound.IsPlaying then return end
+
+	local myRoot = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
+	if not myRoot then return end
+
+	local pos = getSoundWorldPosition(sound)
+	local shouldTrigger = (not pos) or ((myRoot.Position - pos).Magnitude <= detectionRange)
+
+	if shouldTrigger then
+		pcall(function()
+			testRemote:FireServer(punchAction, punchData)
+		end)
+		soundTriggeredUntil[sound] = tick() + 1.2
+	end
+end
+
+------------------------------------------------------------
+-- // SOUND HOOKER
+------------------------------------------------------------
+local function hookSound(sound)
+	if soundHooks[sound] then return end
+
+	local playedConn = sound.Played:Connect(function()
+		attemptAutoBlockForSound(sound)
+		attemptAutoPunchForSound(sound)
+	end)
+
+	local propConn = sound:GetPropertyChangedSignal("IsPlaying"):Connect(function()
+		if sound.IsPlaying then
+			attemptAutoBlockForSound(sound)
+			attemptAutoPunchForSound(sound)
+		end
+	end)
+
+	local destroyConn = sound.Destroying:Connect(function()
+		playedConn:Disconnect()
+		propConn:Disconnect()
+		destroyConn:Disconnect()
+		soundHooks[sound] = nil
+		soundTriggeredUntil[sound] = nil
+	end)
+
+	soundHooks[sound] = true
+
+	if sound.IsPlaying then
+		attemptAutoBlockForSound(sound)
+		attemptAutoPunchForSound(sound)
+	end
+end
+
+-- hook all current + future sounds
+for _, s in ipairs(game:GetDescendants()) do
+	if s:IsA("Sound") then hookSound(s) end
+end
+game.DescendantAdded:Connect(function(d)
+	if d:IsA("Sound") then hookSound(d) end
+end)
+
+------------------------------------------------------------
+-- // AUTO BLOCK & AUTO PUNCH UI
+------------------------------------------------------------
+CombatTab:CreateToggle({
+	Name = "Enable Auto Block (Sound Based)",
+	CurrentValue = false,
+	Flag = "AutoBlockEnabled",
+	Callback = function(state)
+		autoBlockEnabled = state
+	end,
+})
+
+CombatTab:CreateToggle({
+	Name = "Enable Auto Punch (Sound Based)",
+	CurrentValue = false,
+	Flag = "AutoPunchEnabled",
+	Callback = function(state)
+		autoPunchEnabled = state
+	end,
+})
+
+CombatTab:CreateSlider({
+	Name = "Detection Range",
+	Range = {1, 100},
+	Increment = 1,
+	CurrentValue = detectionRange,
+	Flag = "DetectionRange",
+	Callback = function(value)
+		detectionRange = value
+	end,
+})
+
+------------------------------------------------------------
+-- // HITBOX DRAGGING TECH (Animation-Based)
+------------------------------------------------------------
+local KillersFolder = workspace:WaitForChild("Players"):WaitForChild("Killers")
+local hitboxDraggingEnabled = false
+local Dspeed = 5.6
+local Ddelay = 0
+local HDT_DETECT_RADIUS = 6
+local activeHDT = {}
+
+local function humanoidPlayingAnim(humanoid, animId)
+	local ok, tracks = pcall(function() return humanoid:GetPlayingAnimationTracks() end)
+	if not ok or not tracks then return false end
+	for _, t in ipairs(tracks) do
+		local id = tostring(t.Animation and t.Animation.AnimationId or ""):match("%d+")
+		if id and id == animId then
+			return true
+		end
+	end
+	return false
+end
+
+local function setHRPVelocitySafe(hrp, vel)
+	if hrp then pcall(function() hrp.Velocity = vel end) end
+end
+
+local function startHDTForKiller(killerModel, animId)
+	if not hitboxDraggingEnabled or not killerModel or activeHDT[killerModel] then return end
+	local hum = killerModel:FindFirstChildOfClass("Humanoid")
+	local hrp = killerModel:FindFirstChild("HumanoidRootPart")
+	if not hum or not hrp then return end
+	activeHDT[killerModel] = true
+
+	task.spawn(function()
+		while hitboxDraggingEnabled and humanoidPlayingAnim(hum, animId) do
+			local myChar = lp.Character
+			local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
+			if not myHRP then break end
+
+			if Ddelay > 0 then task.wait(Ddelay) end
+
+			local dist = (hrp.Position - myHRP.Position).Magnitude
+			if dist <= HDT_DETECT_RADIUS then
+				local dir = (hrp.Position - myHRP.Position).Unit
+				myHRP.Velocity = dir * math.max(1, Dspeed * 10)
+			else
+				myHRP.Velocity = Vector3.zero
+			end
+
+			task.wait(0.03)
+		end
+
+		local myChar = lp.Character
+		local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
+		if myHRP then myHRP.Velocity = Vector3.zero end
+		activeHDT[killerModel] = nil
+	end)
+end
+
+local attackAnimIDs = {
+	"126830014841198", "126355327951215", "121086746534252",
+	"18885909645", "98456918873918", "105458270463374",
+	"83829782357897", "125403313786645", "118298475669935",
+	"82113744478546", "70371667919898", "99135633258223",
+	"97167027849946", "109230267448394", "139835501033932",
+	"126896426760253", "109667959938617", "126681776859538",
+	"129976080405072", "121293883585738", "81639435858902",
+	"137314737492715", "92173139187970"
+}
+local animSet = {}
+for _, id in ipairs(attackAnimIDs) do animSet[id] = true end
+
+CombatTab:CreateSection("HDT")
+
+CombatTab:CreateToggle({
+	Name = "Hitbox Dragging Tech",
+	CurrentValue = false,
+	Flag = "HDT_Toggle",
+	Callback = function(state)
+		hitboxDraggingEnabled = state
+		if not state then
+			for k in pairs(activeHDT) do activeHDT[k] = nil end
+			local hrp = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
+			if hrp then hrp.Velocity = Vector3.zero end
+		end
+	end,
+})
+
+CombatTab:CreateSlider({
+	Name = "HDT Speed",
+	Range = {1, 20},
+	Increment = 0.1,
+	CurrentValue = Dspeed,
+	Flag = "HDT_Speed",
+	Callback = function(val) Dspeed = tonumber(val) or Dspeed end,
+})
+
+CombatTab:CreateInput({
+	Name = "HDT Delay",
+	PlaceholderText = "0",
+	RemoveTextAfterFocusLost = false,
+	Flag = "HDT_Delay",
+	Callback = function(txt)
+		local n = tonumber(txt)
+		if n then Ddelay = math.max(0, n) end
+	end,
+})
+
+CombatTab:CreateSlider({
+	Name = "HDT Detection Range",
+	Range = {3, 50},
+	Increment = 1,
+	CurrentValue = HDT_DETECT_RADIUS,
+	Flag = "HDT_Range",
+	Callback = function(val)
+		HDT_DETECT_RADIUS = tonumber(val) or HDT_DETECT_RADIUS
+	end,
+})
+
+------------------------------------------------------------
+-- // HDT MAIN LOOP
+------------------------------------------------------------
+RunService.RenderStepped:Connect(function()
+	local myChar = lp.Character
+	local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+	if not myRoot then return end
+
+	for _, killer in ipairs(KillersFolder:GetChildren()) do
+		local hrp = killer:FindFirstChild("HumanoidRootPart")
+		local hum = killer:FindFirstChildOfClass("Humanoid")
+		if not (hrp and hum) then continue end
+		local ok, tracks = pcall(function() return hum:GetPlayingAnimationTracks() end)
+		if not ok or not tracks then continue end
+		for _, t in ipairs(tracks) do
+			local animId = tostring(t.Animation and t.Animation.AnimationId or ""):match("%d+")
+			if animId and animSet[animId] and hitboxDraggingEnabled and not activeHDT[killer] then
+				startHDTForKiller(killer, animId)
+				break
+			end
+		end
+	end
+end)
+
+CombatTab:CreateSection("Techs")
+
+-- ==========================================
+-- 🟪 Fake Block GUI Toggle
+-- ==========================================
+local fakeBlockGui = nil
+
+CombatTab:CreateToggle({
+    Name = "Fake Block GUI",
+    CurrentValue = false,
+    Flag = "FakeBlockGUI",
+    Callback = function(state)
+        if state then
+            -- Create GUI
+            fakeBlockGui = Instance.new("ScreenGui")
+            fakeBlockGui.Name = "FakeBlockGui"
+            fakeBlockGui.ResetOnSpawn = false
+            fakeBlockGui.Parent = game:GetService("CoreGui")
+
+            local frame = Instance.new("Frame")
+            frame.Size = UDim2.new(0, 220, 0, 120)
+            frame.Position = UDim2.new(0.4, 0, 0.5, 0)
+            frame.BackgroundColor3 = Color3.fromRGB(80, 0, 120)
+            frame.Active = true
+            frame.Draggable = true
+            frame.Parent = fakeBlockGui
+
+            local corner = Instance.new("UICorner")
+            corner.CornerRadius = UDim.new(0, 12)
+            corner.Parent = frame
+
+            -- Normal Block Button
+            local normalBlockBtn = Instance.new("TextButton")
+            normalBlockBtn.Size = UDim2.new(0.8, 0, 0, 40)
+            normalBlockBtn.Position = UDim2.new(0.1, 0, 0.15, 0)
+            normalBlockBtn.BackgroundColor3 = Color3.fromRGB(120, 0, 200)
+            normalBlockBtn.Text = "Normal Block"
+            normalBlockBtn.TextColor3 = Color3.new(1, 1, 1)
+            normalBlockBtn.Font = Enum.Font.GothamBold
+            normalBlockBtn.TextSize = 18
+            normalBlockBtn.Parent = frame
+
+            local corner1 = Instance.new("UICorner")
+            corner1.CornerRadius = UDim.new(0, 10)
+            corner1.Parent = normalBlockBtn
+
+            -- M3–M4 Block Button
+            local m3m4Btn = Instance.new("TextButton")
+            m3m4Btn.Size = UDim2.new(0.8, 0, 0, 40)
+            m3m4Btn.Position = UDim2.new(0.1, 0, 0.55, 0)
+            m3m4Btn.BackgroundColor3 = Color3.fromRGB(100, 0, 160)
+            m3m4Btn.Text = "M3–M4 Block"
+            m3m4Btn.TextColor3 = Color3.new(1, 1, 1)
+            m3m4Btn.Font = Enum.Font.GothamBold
+            m3m4Btn.TextSize = 18
+            m3m4Btn.Parent = frame
+
+            local corner2 = Instance.new("UICorner")
+            corner2.CornerRadius = UDim.new(0, 10)
+            corner2.Parent = m3m4Btn
+
+            -- Play Animations
+            local function playAnimation(id)
+                local char = lp.Character or lp.CharacterAdded:Wait()
+                local humanoid = char:FindFirstChildOfClass("Humanoid")
+                if humanoid then
+                    local anim = Instance.new("Animation")
+                    anim.AnimationId = id
+                    local track = humanoid:LoadAnimation(anim)
+                    track:Play()
+                end
+            end
+
+            normalBlockBtn.MouseButton1Click:Connect(function()
+                playAnimation("rbxassetid://72722244508749")
+            end)
+
+            m3m4Btn.MouseButton1Click:Connect(function()
+                playAnimation("rbxassetid://96959123077498")
+            end)
+        else
+            if fakeBlockGui then
+                fakeBlockGui:Destroy()
+                fakeBlockGui = nil
+            end
+        end
+    end
+})
+
+-- FAKE LAG TECH BUTTON (paste directly after the Protect Names (NTK) CreateButton block)
+CombatTab:CreateButton({
+    Name = "Fake Lag Tech",
+    Callback = function()
+        local Players = game:GetService("Players")
+        local LocalPlayer = Players.LocalPlayer
+        local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+        -- Prevent duplicate GUI
+        if PlayerGui:FindFirstChild("FakeLagGui") then
+            -- bring it to front / re-enable if needed
+            PlayerGui.FakeLagGui.Parent = PlayerGui
+            return
+        end
+
+        -- Create ScreenGui
+        local screenGui = Instance.new("ScreenGui")
+        screenGui.Name = "FakeLagGui"
+        screenGui.ResetOnSpawn = false
+        screenGui.Parent = PlayerGui
+
+        -- Main frame
+        local frame = Instance.new("Frame")
+        frame.Size = UDim2.new(0, 220, 0, 100)
+        frame.Position = UDim2.new(0.5, -110, 0.5, -50)
+        frame.BackgroundColor3 = Color3.fromRGB(25,25,25)
+        frame.BorderSizePixel = 0
+        frame.Active = true
+        frame.Parent = screenGui
+
+        -- smooth draggable implementation
+        local UserInputService = game:GetService("UserInputService")
+        frame.AnchorPoint = Vector2.new(0.5, 0.5)
+        frame.Position = UDim2.new(0.5, 0, 0.5, 0)
+
+        local dragging, dragInput, dragStart, startPos = false, nil, nil, nil
+
+        frame.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                dragging = true
+                dragStart = input.Position
+                startPos = frame.Position
+                input.Changed:Connect(function()
+                    if input.UserInputState == Enum.UserInputState.End then
+                        dragging = false
+                    end
+                end)
+            end
+        end)
+
+        frame.InputChanged:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseMovement then
+                dragInput = input
+            end
+        end)
+
+        UserInputService.InputChanged:Connect(function(input)
+            if dragging and input == dragInput and dragStart and startPos then
+                local delta = input.Position - dragStart
+                frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X,
+                                           startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            end
+        end)
+
+        -- Title label
+        local title = Instance.new("TextLabel")
+        title.Size = UDim2.new(1, -48, 0, 24)
+        title.Position = UDim2.new(0, 8, 0, 6)
+        title.BackgroundTransparency = 1
+        title.Text = "Fake Lag"
+        title.Font = Enum.Font.SourceSansBold
+        title.TextSize = 16
+        title.TextColor3 = Color3.new(1,1,1)
+        title.TextXAlignment = Enum.TextXAlignment.Left
+        title.Parent = frame
+
+        -- Close button (explicit)
+        local closeBtn = Instance.new("TextButton")
+        closeBtn.Size = UDim2.new(0, 30, 0, 24)
+        closeBtn.Position = UDim2.new(1, -36, 0, 6)
+        closeBtn.Text = "X"
+        closeBtn.Font = Enum.Font.SourceSansBold
+        closeBtn.TextSize = 14
+        closeBtn.TextColor3 = Color3.new(1,1,1)
+        closeBtn.BackgroundColor3 = Color3.fromRGB(170,50,50)
+        closeBtn.Parent = frame
+        closeBtn.MouseButton1Click:Connect(function()
+            screenGui:Destroy()
+        end)
+
+        -- Activate button (plays animation locally)
+        local activateBtn = Instance.new("TextButton")
+        activateBtn.Size = UDim2.new(1, -16, 0, 36)
+        activateBtn.Position = UDim2.new(0, 8, 0, 44)
+        activateBtn.Text = "Activate"
+        activateBtn.Font = Enum.Font.SourceSans
+        activateBtn.TextSize = 16
+        activateBtn.TextColor3 = Color3.new(1,1,1)
+        activateBtn.BackgroundColor3 = Color3.fromRGB(60,120,220)
+        activateBtn.Parent = frame
+
+        activateBtn.MouseButton1Click:Connect(function()
+            local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if not hum then
+                if typeof(safeNotify) == "function" then
+                    safeNotify({Title="Fake Lag", Content="Humanoid not found.", Duration=2})
+                end
+                return
+            end
+            local anim = Instance.new("Animation")
+            anim.AnimationId = "rbxassetid://136252471123500"
+            local ok, track = pcall(function() return hum:LoadAnimation(anim) end)
+            if ok and track then
+                pcall(function() track:Play() end)
+                if typeof(safeNotify) == "function" then
+                    safeNotify({Title="Fake Lag", Content="Activated (local).", Duration=2})
+                end
+            else
+                if typeof(safeNotify) == "function" then
+                    safeNotify({Title="Fake Lag", Content="Failed to play animation.", Duration=2})
+                end
+            end
+        end)
+
+        -- Keep GUI present across respawn
+        Players.LocalPlayer.CharacterAdded:Connect(function()
+            if screenGui and screenGui.Parent == nil then
+                screenGui.Parent = PlayerGui
+            end
+        end)
+    end
+})
+
+-- ================= TELEPORT BUTTONS =================
+CombatTab:CreateSection("Others")
+
+-- // Variables
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+local connections = {}
+local isEnabled = false
+
+-- // Core Pizza Logic
+local function givemesomepizza(state)
+    if not state then
+        -- Disconnect all event connections when turning off
+        for _, v in pairs(connections) do
+            v:Disconnect()
+        end
+        table.clear(connections)
+        return
+    end
+
+    local function tp(child)
+        if child:IsA("BasePart") and child.Name == "Pizza" then
+            local player = Players.LocalPlayer
+            if player and player.Character then
+                local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    child.CFrame = hrp.CFrame
+                end
+            end
+        end
+    end
+
+    local function watchtower()
+        local map = workspace:FindFirstChild("Map")
+        local insession = map and map:FindFirstChild("Ingame")
+
+        if insession then
+            -- Teleport existing pizzas
+            for _, child in pairs(insession:GetChildren()) do
+                tp(child)
+            end
+            -- Listen for new pizzas appearing
+            table.insert(connections, insession.ChildAdded:Connect(tp))
+        end
+    end
+
+    watchtower()
+end
+
+-- // Rayfield Toggle
+CombatTab:CreateToggle({
+    Name = "Auto Pizza",
+    CurrentValue = false,
+    Flag = "AutoPizzaToggle",
+    Callback = function(Value)
+        isEnabled = Value
+        if isEnabled then
+            Rayfield:Notify({
+                Title = "Auto Pizza",
+                Content = "Pizza ON 🍕",
+            })
+            givemesomepizza(true)
+        else
+            Rayfield:Notify({
+                Title = "Auto Pizza",
+                Content = "Pizza OFF ❌",
+            })
+            givemesomepizza(false)
+        end
+    end,
+})
+
+local function teleportToModel(model)
+    local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if hrp and model then
+        hrp.CFrame = model.PrimaryPart and model.PrimaryPart.CFrame or model:GetModelCFrame()
+    end
+end
+
+local function getAllPickups(name)
+    local results = {}
+    local map = workspace:FindFirstChild("Map") and workspace.Map:FindFirstChild("Ingame") and workspace.Map.Ingame:FindFirstChild("Map")
+    if map then
+        for _, obj in pairs(map:GetChildren()) do
+            if obj.Name == name then
+                table.insert(results, obj)
+            end
+        end
+    end
+    return results
+end
+
+CombatTab:CreateButton({
+    Name = "Teleport to Medkit",
+    Callback = function()
+        local medkits = getAllPickups("Medkit")
+        if #medkits > 0 then
+            teleportToModel(medkits[1])
+        end
+    end
+})
+
+CombatTab:CreateButton({
+    Name = "Teleport to BloxyCola",
+    Callback = function()
+        local colas = getAllPickups("BloxyCola")
+        if #colas > 0 then
+            teleportToModel(colas[1])
+        end
+    end
+})
+
+-- 🌟 Credits Tab (add this to your Rayfield window)
+local CreditsTab = Window:CreateTab("Credits", "notepad-text")
+
+-- 📝 Note
+CreditsTab:CreateParagraph({
+    Title = "Note",
+    Content = "If you want to suggest or report bugs join our Discord and also huge credits to these people except for me. Thanks!"
+})
+
+-- 👑 Sphinx – Purple (theme color)
+CreditsTab:CreateLabel("Sphinx / Owner→ Lead developer of VortexHub", 72423470056482, Color3.fromRGB(150, 100, 255), false)
+
+-- 🍊 Leaves – Orange
+CreditsTab:CreateLabel("Leaves→ Helpful in some ways and taught me smh. Also the Owner of SkibidiSaken and a YouTuber", 85503550742402, Color3.fromRGB(255, 170, 60), false)
+
+-- 💙 NTK – Blue
+CreditsTab:CreateLabel("NTK→ Helped with scripting ideas and sources. Also the Owner of DeathSaken", 100655419994343, Color3.fromRGB(70, 160, 255), false)
+
+-- 💚 Bob – Green
+CreditsTab:CreateLabel("Bob→ Retired Unc who helped in some functions. Also the Owner of B0bbyHub", 92269491882834, Color3.fromRGB(90, 255, 90), false)
+
+-- 💖 LKQ – Pink
+CreditsTab:CreateLabel("LKQ→ A warm kindhearted person who is helpful, You may rest in peace.", 70630525550482, Color3.fromRGB(255, 105, 180), false)
+
+-- 📋 Copy Discord Invite Button
+CreditsTab:CreateButton({
+    Name = "Copy Discord Invite",
+    Callback = function()
+        setclipboard("https://discord.gg/TKcPtFCd5V")
+        Rayfield:Notify({
+            Title = "Copied!",
+            Content = "Discord invite link copied to clipboard.",
+            Duration = 4,
+            Image = 4483362458, -- Optional icon
+        })
+    end,
+})
+
+safeNotify({Title="VortexHub", Content="Loaded successfully", Duration=2})
